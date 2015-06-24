@@ -6,6 +6,9 @@ import readline
 import re
 import time
 import sys
+import tkinter
+from PIL import Image
+
 browser = webdriver.Chrome()
 browser.get('http://www.mlb.com/mlb/events/all_star/y2015/ballot.jsp')
 
@@ -97,8 +100,22 @@ while True:
 
     while True:
         xpath = '//input[contains(@id, "v2-") and @name = "v2" and not(ancestor::div[contains(@style, "display: none")])]'
+        captcha_xpath = '//input[contains(@id, "v2-") and @name = "v2" and not(ancestor::div[contains(@style, "display: none")])]/../../../..//img'
         captcha = browser.find_element_by_xpath(xpath)
         captcha.click()
+        full_captcha = browser.find_element_by_xpath(captcha_xpath)
+        location = full_captcha.location
+        size = full_captcha.size
+        left = int(location['x']) - int(browser.execute_script('return window.scrollX'))
+        top = int(location['y']) - int(browser.execute_script('return window.scrollY'))
+        right = left + int(size['width'])
+        bottom = top + int(size['height'])
+        browser.save_screenshot('screenshot.png')
+
+        im = Image.open('screenshot.png')
+        im = im.crop((left, top, right, bottom))
+        im.save('captcha.gif')
+
         res = input("Captcha: ")
 
         captcha.send_keys(res)
