@@ -13,17 +13,13 @@ import queue
 import threading
 from PIL import Image
 
+from selenium.webdriver.common.desired_capabilities import DesiredCapabilities
+
 class ThreadedTask(threading.Thread):
     def __init__(self, cont):
         threading.Thread.__init__(self)
         self.controller = cont
     def run(self):
-        browser = webdriver.PhantomJS()
-        browser.set_window_size(1900, 3000)
-        self.controller.set_status("Loading MLB All-Star page")
-        browser.get('http://www.mlb.com/mlb/events/all_star/y2015/ballot.jsp')
-        self.controller.set_status("Loaded")
-
         class ClickError(Exception):
             pass
 
@@ -60,7 +56,6 @@ class ThreadedTask(threading.Thread):
         ]
         buttons = {}
 
-        email = self.controller.prompt_question("Email address: ")
         while True:
             dob = self.controller.prompt_question("DOB: ")
             retest = re.match(r"""(\d{1,2})/(\d{1,2})/(\d{4})""", dob)
@@ -75,6 +70,16 @@ class ThreadedTask(threading.Thread):
         zipcode = self.controller.prompt_question("Zip: ")
 
         while True:
+            dcap = dict(DesiredCapabilities.PHANTOMJS)
+            dcap["phantomjs.page.settings.userAgent"] = "Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/43.0.2357.81 Safari/537.36"
+            browser = webdriver.PhantomJS(desired_capabilities=dcap)
+            browser.set_window_size(1900, 3000)
+
+            self.controller.set_status("Loading MLB All-Star page")
+            browser.get('http://www.mlb.com/mlb/events/all_star/y2015/ballot.jsp')
+            self.controller.set_status("Loaded")
+            email = self.controller.prompt_question("Email address: ")
+
             self.controller.set_status("Voting for players")
 
             for p in players:
@@ -172,8 +177,7 @@ class ThreadedTask(threading.Thread):
                     break
 
             print("Voted 35 times!")
-            browser.find_element_by_xpath('//a[text()[contains(.,"Clear and fill out a new ballot")]]').click()
-            email = self.controller.prompt_question("Email address: ")
+            browser.quit()
 
 class Question(object):
     def __init__(self, q):
