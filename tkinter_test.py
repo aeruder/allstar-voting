@@ -1,69 +1,151 @@
-import tkinter
-import tkinter.ttk
+import tkinter as tk
+import tkinter.ttk as ttk
 import queue
 import threading
 import time
 
 class ThreadedTask(threading.Thread):
-    def __init__(self, out_q, in_q):
+    def __init__(self, cont):
         threading.Thread.__init__(self)
-        self.in_q = in_q
-        self.out_q = out_q
+        self.controller = cont
     def run(self):
-        i = 0
-        while True:
-            self.out_q.put("%d -- WOO" % i)
-            time.sleep(5)
-            i += 1
+        self.controller.set_status("Test status")
+        time.sleep(5)
+        print(self.controller.prompt_question("What is your name?"))
+        print(self.controller.prompt_captcha("captcha.gif"))
 
-in_q = queue.Queue()
-out_q = queue.Queue()
+class Question(object):
+    def __init__(self, q):
+        self.q = q
 
-def process_q():
-    global in_q
-    global status
-    global root
-    global captcha_entry
-    while True:
+class Captcha(object):
+    def __init__(self, img):
+        self.img = img
+
+class Status(object):
+    def __init__(self, s):
+        self.s = s
+
+class AllStarApp(tk.Tk):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.geometry('250x100')
+        self.title('All-Star Voting')
+        self.in_q = queue.Queue()
+        self.out_q = queue.Queue()
+
+        container = ttk.Frame(self)
+        container.pack(fill=tk.BOTH, expand=tk.YES)
+        container.grid_rowconfigure(0, weight=1)
+        container.grid_columnconfigure(0, weight=1)
+
+        self.frames = {}
+        for F in (CaptchaPage, StatusPage, PromptPage):
+            frame = F(container, self)
+            self.frames[F] = frame
+            frame.grid(row=0, column=0, sticky="nsew", padx=5, pady=5)
+        self.in_q.put(Status("Royals All-Star Voting!"))
+        self.in_q.put(Captcha('captcha.gif'))
+        self.process_queue()
+
+    def process_queue(self):
         try:
-            msg = in_q.get(0)
-            print("HOLA: %s" % msg)
-            if msg == "CAPTCHA":
-                captcha_entry.configure(state='enabled')
-                captcha_entry.focus()
-            else:
-                status.set(msg)
+            a = self.in_q.get_nowait()
+            if type(a) is Status:
+                self.show_frame(StatusPage)
+                self.frames[StatusPage].set_status(a.s)
+            elif type(a) is Captcha:
+                self.show_frame(CaptchaPage)
+                self.frames[CaptchaPage].prompt_captcha(a.img)
+            elif type(a) is Question:
+                self.show_frame(PromptPage)
+                self.frames[PromptPage].prompt_question(a.q)
         except queue.Empty:
-            root.after(100, process_q)
-            break
+            pass
+        self.after(250, self.process_queue)
 
-root = tkinter.Tk()
-root.title("Captcha!")
+    def show_frame(self, c):
+        frame = self.frames[c]
+        frame.tkraise()
 
-mainframe = tkinter.ttk.Frame(root, padding="3 3 12 12")
-mainframe.grid(column=0, row=0, sticky=(tkinter.N, tkinter.W, tkinter.E, tkinter.S))
-mainframe.columnconfigure(0, weight=1)
-mainframe.rowconfigure(0, weight=1)
+    def prompt_question(self, q):
+        self.in_q.put(Question(q))
+        return self.out_q.get(block=True, timeout=None)
 
-captcha = tkinter.StringVar()
-status = tkinter.StringVar()
+    def set_status(self, s):
+        self.in_q.put(Status(s))
 
-image = tkinter.PhotoImage(file='captcha.gif')
-image_view = tkinter.ttk.Label(mainframe, image=image)
-image_view.grid(column=1, row=2, sticky=(tkinter.W, tkinter.E, tkinter.N))
+    def prompt_captcha(self, img):
+        self.in_q.put(Captcha(img))
+        return self.out_q.get(block=True, timeout=None)
 
-captcha_entry = tkinter.ttk.Entry(mainframe, width=7, textvariable=captcha)
-captcha_entry.grid(column=1, row=3, sticky=(tkinter.W, tkinter.E))
+class CaptchaPage(ttk.Frame):
+    def __init__(self, parent, controller):
+        super().__init__(parent)
+        self.controller = controller
+        self.label = tk.Label(self)
+        self.label.grid(column=0, row=0, columnspan=2, sticky="n", pady=5)
+        clabel = ttk.Label(self, text="Captcha:")
+        clabel.grid(column=0, row=1, sticky="nw")
+        self.captcha = tk.StringVar()
+        self.entry = ttk.Entry(self, textvariable=self.captcha)
+        self.entry.grid(column=1, row=1, sticky="new")
+        self.grid_columnconfigure(1, weight=1)
+        self.grid_rowconfigure(1, weight=1)
 
-status_label = tkinter.ttk.Label(mainframe, textvariable=status)
-status_label.grid(column=1, row=1, sticky=(tkinter.W, tkinter.E))
+    def pressed_enter(self, event):
+        self.controller.out_q.put(self.captcha.get())
+        self.controller.unbind("<Return>", self.binding)
 
-for child in mainframe.winfo_children(): child.grid_configure(padx=5, pady=5)
+    def prompt_captcha(self, c):
+        self.captcha.set("")
+        image = tk.PhotoImage(file=c)
+        self.label.configure(image=image, compound="none")
+        self.label.image = image
+        self.binding = self.controller.bind("<Return>", self.pressed_enter)
+        self.entry.focus_set()
 
-captcha_entry.configure(state='disabled')
-# root.bind('<Return>', calculate)
+class StatusPage(ttk.Frame):
+    def __init__(self, parent, controller):
+        super().__init__(parent)
+        self.controller = controller
+        self.status = tk.StringVar()
+        label1 = ttk.Label(self, text="Status: ")
+        label2 = ttk.Label(self, textvariable=self.status)
+        label1.grid(column=0, row=0, sticky="nw")
+        label2.grid(column=1, row=0, sticky="nwe")
+        self.status.set("This is a test")
+        self.grid_columnconfigure(1, weight=1)
+        self.grid_rowconfigure(0, weight=1)
 
-process_q()
-ThreadedTask(in_q, out_q).start()
+    def set_status(self, s):
+        self.status.set(s)
 
-root.mainloop()
+class PromptPage(ttk.Frame):
+    def __init__(self, parent, controller):
+        super().__init__(parent)
+        self.controller = controller
+        self.question = tk.StringVar()
+        self.answer = tk.StringVar()
+        qlabel = ttk.Label(self, textvariable=self.question)
+        qlabel.grid(row=0, column=0, sticky="nw")
+        self.entry = ttk.Entry(self, textvariable=self.answer)
+        self.entry.grid(row=0, column=1, sticky="nwe")
+        self.question.set("Favorite color?")
+        self.grid_columnconfigure(1, weight=1)
+        self.grid_rowconfigure(0, weight=1)
+
+    def pressed_enter(self, event):
+        self.controller.out_q.put(self.answer.get())
+        self.controller.unbind("<Return>", self.binding)
+
+    def prompt_question(self, q):
+        self.question.set(q)
+        self.answer.set("")
+        self.binding = self.controller.bind("<Return>", self.pressed_enter)
+        self.entry.focus_set()
+
+app = AllStarApp()
+
+ThreadedTask(app).start()
+app.mainloop()
